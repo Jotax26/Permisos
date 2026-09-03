@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, date
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
@@ -9,12 +9,10 @@ from sqlalchemy import create_engine, text
 # 1. CONEXIÓN A BASE DE DATOS NEON.TECH (POSTGRESQL)
 # -----------------------------------------------------------
 def get_engine():
-    # Obtiene la URL desde los Secrets de Streamlit Cloud o variables de entorno
     db_url = st.secrets.get("DATABASE_URL", os.getenv("DATABASE_URL"))
     if not db_url:
         st.error("❌ No se encontró la variable DATABASE_URL en los Secrets.")
         st.stop()
-    # psycopg2 requiere 'postgresql://' en lugar de 'postgres://'
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     return create_engine(db_url, pool_pre_ping=True)
@@ -22,7 +20,6 @@ def get_engine():
 def init_db():
     engine = get_engine()
     with engine.begin() as conn:
-        # Tabla de Empleados
         conn.execute(text('''
             CREATE TABLE IF NOT EXISTS empleados (
                 id SERIAL PRIMARY KEY,
@@ -31,7 +28,6 @@ def init_db():
                 jefe_inmediato TEXT
             );
         '''))
-        # Tabla de Solicitudes
         conn.execute(text('''
             CREATE TABLE IF NOT EXISTS solicitudes (
                 id SERIAL PRIMARY KEY,
@@ -262,7 +258,6 @@ if opcion == "➕ Nueva Solicitud":
                 st.error("⚠️ El nombre del colaborador es obligatorio.")
             else:
                 with engine.begin() as conn:
-                    # Guardar o actualizar colaborador (UPSERT en PostgreSQL)
                     upsert_emp = text('''
                         INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato)
                         VALUES (:nombre, :dpto, :jefe)
@@ -275,7 +270,6 @@ if opcion == "➕ Nueva Solicitud":
                         "jefe": jefe.strip()
                     })
 
-                    # Insertar solicitud
                     insert_sol = text('''
                         INSERT INTO solicitudes 
                         (fecha_solicitud, nombre_colaborador, departamento, jefe_inmediato, 
@@ -333,7 +327,7 @@ elif opcion == "👤 Gestión de Personal":
                         st.error("El colaborador ya existe en la base de datos.")
 
 # -----------------------------------------------------------
-# OPCIÓN 3: BASE DE DATOS Y DESCARGA DE PDF
+# OPCIÓN 3: BASE DE DATOS, EDICIÓN, ELIMINACIÓN Y PDF
 # -----------------------------------------------------------
 elif opcion == "📊 Base de Datos":
     st.subheader("Histórico de Solicitudes")
@@ -346,42 +340,102 @@ elif opcion == "📊 Base de Datos":
         st.dataframe(df, use_container_width=True)
 
         st.markdown("---")
-        st.subheader("📄 Generar y Descargar Solicitud en PDF")
         
-        col_pdf1, col_pdf2 = st.columns([1, 2])
-        with col_pdf1:
-            id_pdf = st.number_input("Selecciona el ID de la Solicitud", min_value=int(df["id"].min()), max_value=int(df["id"].max()), step=1)
-        
-        with col_pdf2:
-            st.write("")
-            st.write("")
-            if st.button("📄 Generar PDF"):
-                solicitud_sel = df[df["id"] == id_pdf].iloc[0].to_dict()
-                pdf_bytes = generar_pdf_solicitud(solicitud_sel, logo_path=LOGO_PATH if os.path.exists(LOGO_PATH) else None)
+        # Pestañas para organizar la Edición, Eliminación y PDF
+        tab_pdf, tab_editar, tab_eliminar = st.tabs(["📄 Generar PDF", "✏️ Modificar Registro", "🗑️ Eliminar Registro"])
 
-                st.download_button(
-                    label=f"📥 Descargar PDF Solicitud #{id_pdf}",
-                    data=pdf_bytes,
-                    file_name=f"SOLIDARISTAS_Solicitud_{id_pdf}_{solicitud_sel['nombre_colaborador'].replace(' ', '_')}.pdf",
-                    mime="application/pdf"
-                )
+        # TAB GENERAR PDF
+        with tab_pdf:
+            col_pdf1, col_pdf2 = st.columns([1, 2])
+            with col_pdf1:
+                id_pdf = st.selectbox("Selecciona el ID para PDF", df["id"].tolist(), key="sb_pdf")
+            with col_pdf2:
+                st.write("")
+                st.write("")
+                if st.button("📄 Generar PDF"):
+                    solicitud_sel = df[df["id"] == id_pdf].iloc[0].to_dict()
+                    pdf_bytes = generar_pdf_solicitud(solicitud_sel, logo_path=LOGO_PATH if os.path.exists(LOGO_PATH) else None)
 
-        st.markdown("---")
-        st.subheader("Acciones de Administración (Cambiar Estado)")
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            sol_id = st.number_input("ID a Modificar", min_value=1, step=1)
-        with col_b:
-            nuevo_estado = st.selectbox("Nuevo Estado", ["Aprobado", "Rechazado", "Pendiente"])
-        with col_c:
-            st.write("")
-            if st.button("Actualizar Estado"):
-                with engine.begin() as conn:
-                    conn.execute(
-                        text("UPDATE solicitudes SET estado = :e WHERE id = :id"),
-                        {"e": nuevo_estado, "id": sol_id}
+                    st.download_button(
+                        label=f"📥 Descargar PDF Solicitud #{id_pdf}",
+                        data=pdf_bytes,
+                        file_name=f"SOLIDARISTAS_Solicitud_{id_pdf}_{solicitud_sel['nombre_colaborador'].replace(' ', '_')}.pdf",
+                        mime="application/pdf"
                     )
-                st.success(f"Estado de la solicitud #{sol_id} actualizado.")
+
+        # TAB MODIFICAR REGISTRO
+        with tab_editar:
+            id_edit = st.selectbox("Selecciona el ID del registro a editar", df["id"].tolist(), key="sb_edit")
+            registro = df[df["id"] == id_edit].iloc[0]
+
+            dptos = ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"]
+            tipos = ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
+            
+            def safe_date(date_str):
+                try:
+                    return datetime.strptime(str(date_str), "%Y-%m-%d").date()
+                except Exception:
+                    return date.today()
+
+            with st.form("form_editar_registro"):
+                e_col1, e_col2 = st.columns(2)
+                with e_col1:
+                    e_nombre = st.text_input("Nombre Colaborador", value=registro["nombre_colaborador"])
+                    e_dpto_idx = dptos.index(registro["departamento"]) if registro["departamento"] in dptos else 0
+                    e_dpto = st.selectbox("Departamento", dptos, index=e_dpto_idx)
+                    e_jefe = st.text_input("Jefe Inmediato", value=registro["jefe_inmediato"])
+                    e_estado = st.selectbox("Estado", ["Pendiente", "Aprobado", "Rechazado"], 
+                                            index=["Pendiente", "Aprobado", "Rechazado"].index(registro["estado"]) if registro["estado"] in ["Pendiente", "Aprobado", "Rechazado"] else 0)
+
+                with e_col2:
+                    e_tipo_idx = tipos.index(registro["tipo_permiso"]) if registro["tipo_permiso"] in tipos else 0
+                    e_tipo = st.selectbox("Tipo de Permiso", tipos, index=e_tipo_idx)
+                    e_unidad = st.radio("Unidad", ["Días", "Horas"], index=0 if registro["unidad"] == "Días" else 1, horizontal=True)
+                    e_f_inicio = st.date_input("Fecha Inicio", safe_date(registro["fecha_inicio"]))
+                    e_f_fin = st.date_input("Fecha Fin", safe_date(registro["fecha_fin"]))
+                    e_cantidad = st.number_input("Cantidad", value=float(registro["cantidad"]), min_value=0.5, step=0.5)
+
+                e_motivo = st.text_area("Motivo", value=str(registro["motivo"]))
+
+                btn_guardar_edit = st.form_submit_button("💾 Guardar Cambios")
+
+                if btn_guardar_edit:
+                    with engine.begin() as conn:
+                        update_query = text('''
+                            UPDATE solicitudes SET
+                                nombre_colaborador = :nombre,
+                                departamento = :dpto,
+                                jefe_inmediato = :jefe,
+                                tipo_permiso = :tipo,
+                                fecha_inicio = :f_ini,
+                                fecha_fin = :f_fin,
+                                cantidad = :cant,
+                                unidad = :uni,
+                                motivo = :mot,
+                                estado = :estado
+                            WHERE id = :id
+                        ''')
+                        conn.execute(update_query, {
+                            "nombre": e_nombre, "dpto": e_dpto, "jefe": e_jefe,
+                            "tipo": e_tipo, "f_ini": str(e_f_inicio), "f_fin": str(e_f_fin),
+                            "cant": e_cantidad, "uni": e_unidad, "mot": e_motivo,
+                            "estado": e_estado, "id": id_edit
+                        })
+                    st.success(f"✅ Permiso #{id_edit} actualizado con éxito.")
+                    st.rerun()
+
+        # TAB ELIMINAR REGISTRO
+        with tab_eliminar:
+            st.warning("⚠️ La eliminación es permanente y borrará el registro de la base de datos.")
+            id_del = st.selectbox("Selecciona el ID del registro a eliminar", df["id"].tolist(), key="sb_del")
+            
+            registro_del = df[df["id"] == id_del].iloc[0]
+            st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']} | **Inicio:** {registro_del['fecha_inicio']}")
+
+            if st.button("🗑️ Eliminar Definitivamente", type="primary"):
+                with engine.begin() as conn:
+                    conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
+                st.success(f"❌ Registro #{id_del} eliminado correctamente.")
                 st.rerun()
 
 # -----------------------------------------------------------
