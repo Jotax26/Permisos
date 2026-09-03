@@ -5,6 +5,18 @@ from datetime import datetime, date
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
+# Lista global de departamentos actualizada
+DEPARTAMENTOS = [
+    "Administración", 
+    "Taller", 
+    "Operaciones", 
+    "Tecnología", 
+    "Finanzas", 
+    "Talento Humano", 
+    "Ventas", 
+    "Logística"
+]
+
 # -----------------------------------------------------------
 # 1. CONEXIÓN A BASE DE DATOS NEON.TECH (POSTGRESQL)
 # -----------------------------------------------------------
@@ -66,7 +78,7 @@ class SolicitudPDF(FPDF):
         self.set_fill_color(214, 158, 46)
         self.rect(0, 32, 210, 2, 'F')
 
-        # Control del logo sin solapamiento con el texto
+        # Control del logo sin solapamiento
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 self.image(self.logo_path, x=12, y=6, w=40, h=18)
@@ -269,7 +281,7 @@ if opcion == "➕ Nueva Solicitud":
     with col_sel:
         seleccion_emp = st.selectbox("Seleccionar Colaborador de la Base de Datos", lista_empleados)
 
-    nombre_def, dpto_def, jefe_def = "", "Operaciones", ""
+    nombre_def, dpto_def, jefe_def = "", "Administración", ""
 
     if seleccion_emp not in ["-- Seleccionar Colaborador --", "➕ Registrar Nuevo Colaborador"]:
         emp_data = empleados_df[empleados_df["nombre_colaborador"] == seleccion_emp].iloc[0]
@@ -284,9 +296,8 @@ if opcion == "➕ Nueva Solicitud":
             fecha_solicitud = st.date_input("Fecha de Solicitud", datetime.now())
             nombre = st.text_input("Nombre Completo del Colaborador", value=nombre_def)
             
-            dptos = ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"]
-            idx_dpto = dptos.index(dpto_def) if dpto_def in dptos else 0
-            departamento = st.selectbox("Departamento / Área", dptos, index=idx_dpto)
+            idx_dpto = DEPARTAMENTOS.index(dpto_def) if dpto_def in DEPARTAMENTOS else 0
+            departamento = st.selectbox("Departamento / Área", DEPARTAMENTOS, index=idx_dpto)
             
             jefe = st.text_input("Jefe Inmediato", value=jefe_def)
         
@@ -367,7 +378,7 @@ elif opcion == "👤 Gestión de Personal":
     with st.expander("➕ Registrar Nuevo Colaborador Manualmente"):
         with st.form("form_nuevo_emp", clear_on_submit=True):
             n_nombre = st.text_input("Nombre Completo")
-            n_dpto = st.selectbox("Departamento", ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"])
+            n_dpto = st.selectbox("Departamento / Área", DEPARTAMENTOS)
             n_jefe = st.text_input("Jefe Inmediato")
             btn_emp = st.form_submit_button("Guardar Personal")
 
@@ -423,7 +434,6 @@ elif opcion == "📊 Base de Datos":
             id_edit = st.selectbox("Selecciona el ID del registro a editar", df["id"].tolist(), key="sb_edit")
             registro = df[df["id"] == id_edit].iloc[0]
 
-            dptos = ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"]
             tipos = ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
             
             def safe_date(date_str):
@@ -436,8 +446,8 @@ elif opcion == "📊 Base de Datos":
                 e_col1, e_col2 = st.columns(2)
                 with e_col1:
                     e_nombre = st.text_input("Nombre Colaborador", value=registro["nombre_colaborador"])
-                    e_dpto_idx = dptos.index(registro["departamento"]) if registro["departamento"] in dptos else 0
-                    e_dpto = st.selectbox("Departamento", dptos, index=e_dpto_idx)
+                    e_dpto_idx = DEPARTAMENTOS.index(registro["departamento"]) if registro["departamento"] in DEPARTAMENTOS else 0
+                    e_dpto = st.selectbox("Departamento / Área", DEPARTAMENTOS, index=e_dpto_idx)
                     e_jefe = st.text_input("Jefe Inmediato", value=registro["jefe_inmediato"])
                     e_estado = st.selectbox("Estado", ["Pendiente", "Aprobado", "Rechazado"], 
                                             index=["Pendiente", "Aprobado", "Rechazado"].index(registro["estado"]) if registro["estado"] in ["Pendiente", "Aprobado", "Rechazado"] else 0)
