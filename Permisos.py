@@ -489,13 +489,44 @@ elif opcion == "📊 Base de Datos":
             registro_del = df[df["id"] == id_del].iloc[0]
             st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']} | **Inicio:** {registro_del['fecha_inicio']}")
 
-            if st.button("🗑️ Eliminar Definitivamente", type="primary"):
-                with engine.begin() as conn:
-                    conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
-                
-                st.cache_data.clear()
-                st.success(f"❌ Registro #{id_del} eliminado permanentemente de la base de datos.")
-                st.rerun()
+            col_del1, col_del2 = st.columns(2)
+            with col_del1:
+                if st.button("🗑️ Eliminar Registro", type="primary"):
+                    with engine.begin() as conn:
+                        # 1. Eliminar la solicitud
+                        conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
+                        
+                        # 2. Reajustar la secuencia/correlativo al ID máximo restante
+                        conn.execute(text("""
+                            SELECT setval('solicitudes_id_seq', COALESCE((SELECT MAX(id) FROM solicitudes), 0));
+                        """))
+                    
+                    st.cache_data.clear()
+                    st.success(f"❌ Registro #{id_del} eliminado y correlativo ajustado.")
+                    st.rerun()
+
+            with col_del2:
+                if st.button("🔄 Renumerar Folios Consecutivos"):
+                    with engine.begin() as conn:
+                        # Reordena e iguala los IDs existentes (1, 2, 3...) sin dejar huecos
+                        conn.execute(text("""
+                            WITH renumerado AS (
+                                SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS nuevo_id
+                                FROM solicitudes
+                            )
+                            UPDATE solicitudes
+                            SET id = renumerado.nuevo_id
+                            FROM renumerado
+                            WHERE solicitudes.id = renumerado.id;
+                        """))
+                        
+                        # Reajusta el contador para el próximo registro
+                        conn.execute(text("""
+                            SELECT setval('solicitudes_id_seq', COALESCE((SELECT MAX(id) FROM solicitudes), 0));
+                        """))
+                    st.cache_data.clear()
+                    st.success("✅ Todos los folios han sido renumerados en orden consecutivo.")
+                    st.rerun()
 
 # --- OPCIÓN 4: MÉTRICAS ---
 elif opcion == "📈 Métricas":
