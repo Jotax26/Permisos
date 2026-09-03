@@ -66,14 +66,14 @@ class SolicitudPDF(FPDF):
         self.set_fill_color(214, 158, 46)
         self.rect(0, 32, 210, 2, 'F')
 
-        # Control del logo sin solapamiento
+        # Control del logo sin solapamiento con el texto
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 self.image(self.logo_path, x=12, y=6, w=40, h=18)
             except Exception:
                 pass
 
-        # Texto del encabezado con sangría amplia (x=60)
+        # Texto del encabezado desplazado a la derecha (x=60)
         self.set_xy(60, 7)
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(255, 255, 255)
@@ -349,7 +349,8 @@ if opcion == "➕ Nueva Solicitud":
                         "f_col": "Sí" if firma_colab else "No",
                         "f_jef": "Sí" if firma_jefe else "No"
                     })
-                st.success("✅ Solicitud guardada con éxito.")
+                st.cache_data.clear()
+                st.success("✅ Solicitud guardada con éxito en la base de datos.")
 
 # --- OPCIÓN 2: GESTIÓN DE PERSONAL ---
 elif opcion == "👤 Gestión de Personal":
@@ -378,12 +379,13 @@ elif opcion == "👤 Gestión de Personal":
                                 text("INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato) VALUES (:n, :d, :j)"),
                                 {"n": n_nombre.strip(), "d": n_dpto, "j": n_jefe.strip()}
                             )
+                        st.cache_data.clear()
                         st.success(f"Colaborador {n_nombre} registrado correctamente.")
                         st.rerun()
                     except Exception:
                         st.error("El colaborador ya existe en la base de datos.")
 
-# --- OPCIÓN 3: BASE DE DATOS Y GENERACIÓN DE PDF ---
+# --- OPCIÓN 3: BASE DE DATOS Y GESTIÓN DE REGISTROS ---
 elif opcion == "📊 Base de Datos":
     st.subheader("Histórico de Solicitudes")
 
@@ -397,7 +399,7 @@ elif opcion == "📊 Base de Datos":
         
         tab_pdf, tab_editar, tab_eliminar = st.tabs(["📄 Generar PDF", "✏️ Modificar Registro", "🗑️ Eliminar Registro"])
 
-        # TAB PDF
+        # TAB GENERAR PDF
         with tab_pdf:
             col_pdf1, col_pdf2 = st.columns([1, 2])
             with col_pdf1:
@@ -416,9 +418,9 @@ elif opcion == "📊 Base de Datos":
                         mime="application/pdf"
                     )
 
-        # TAB MODIFICAR
+        # TAB MODIFICAR REGISTRO
         with tab_editar:
-            id_edit = st.selectbox("Selecciona el ID a editar", df["id"].tolist(), key="sb_edit")
+            id_edit = st.selectbox("Selecciona el ID del registro a editar", df["id"].tolist(), key="sb_edit")
             registro = df[df["id"] == id_edit].iloc[0]
 
             dptos = ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"]
@@ -466,20 +468,23 @@ elif opcion == "📊 Base de Datos":
                             "cant": e_cantidad, "uni": e_unidad, "mot": e_motivo,
                             "estado": e_estado, "id": id_edit
                         })
-                    st.success(f"✅ Permiso #{id_edit} actualizado.")
+                    st.cache_data.clear()
+                    st.success(f"✅ Registro #{id_edit} actualizado en la base de datos.")
                     st.rerun()
 
-        # TAB ELIMINAR
+        # TAB ELIMINAR REGISTRO
         with tab_eliminar:
-            st.warning("⚠️ La eliminación borrará permanentemente el registro.")
-            id_del = st.selectbox("Selecciona el ID a eliminar", df["id"].tolist(), key="sb_del")
+            st.warning("⚠️ La eliminación borra permanentemente el registro de la base de datos PostgreSQL.")
+            id_del = st.selectbox("Selecciona el ID del registro a eliminar", df["id"].tolist(), key="sb_del")
             registro_del = df[df["id"] == id_del].iloc[0]
-            st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']}")
+            st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']} | **Inicio:** {registro_del['fecha_inicio']}")
 
             if st.button("🗑️ Eliminar Definitivamente", type="primary"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
-                st.success(f"❌ Registro #{id_del} eliminado.")
+                
+                st.cache_data.clear()
+                st.success(f"❌ Registro #{id_del} eliminado permanentemente de la base de datos.")
                 st.rerun()
 
 # --- OPCIÓN 4: MÉTRICAS ---
