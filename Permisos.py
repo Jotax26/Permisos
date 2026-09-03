@@ -493,12 +493,24 @@ elif opcion == "📊 Base de Datos":
             with col_del1:
                 if st.button("🗑️ Eliminar Registro", type="primary"):
                     with engine.begin() as conn:
-                        # 1. Eliminar la solicitud
+                        # 1. Eliminar la solicitud seleccionada
                         conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
                         
-                        # 2. Reajustar la secuencia/correlativo al ID máximo restante
+                        # 2. Reajuste seguro de la secuencia
                         conn.execute(text("""
-                            SELECT setval('solicitudes_id_seq', COALESCE((SELECT MAX(id) FROM solicitudes), 0));
+                            DO $$
+                            DECLARE
+                                max_id INT;
+                                seq_name TEXT;
+                            BEGIN
+                                SELECT pg_get_serial_sequence('solicitudes', 'id') INTO seq_name;
+                                SELECT MAX(id) INTO max_id FROM solicitudes;
+                                IF max_id IS NULL THEN
+                                    EXECUTE format('SELECT setval(%L, 1, false)', seq_name);
+                                ELSE
+                                    EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
+                                END IF;
+                            END $$;
                         """))
                     
                     st.cache_data.clear()
@@ -508,7 +520,7 @@ elif opcion == "📊 Base de Datos":
             with col_del2:
                 if st.button("🔄 Renumerar Folios Consecutivos"):
                     with engine.begin() as conn:
-                        # Reordena e iguala los IDs existentes (1, 2, 3...) sin dejar huecos
+                        # 1. Reordena e iguala los IDs existentes (1, 2, 3...) sin dejar huecos
                         conn.execute(text("""
                             WITH renumerado AS (
                                 SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS nuevo_id
@@ -520,9 +532,21 @@ elif opcion == "📊 Base de Datos":
                             WHERE solicitudes.id = renumerado.id;
                         """))
                         
-                        # Reajusta el contador para el próximo registro
+                        # 2. Reajuste seguro de la secuencia
                         conn.execute(text("""
-                            SELECT setval('solicitudes_id_seq', COALESCE((SELECT MAX(id) FROM solicitudes), 0));
+                            DO $$
+                            DECLARE
+                                max_id INT;
+                                seq_name TEXT;
+                            BEGIN
+                                SELECT pg_get_serial_sequence('solicitudes', 'id') INTO seq_name;
+                                SELECT MAX(id) INTO max_id FROM solicitudes;
+                                IF max_id IS NULL THEN
+                                    EXECUTE format('SELECT setval(%L, 1, false)', seq_name);
+                                ELSE
+                                    EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
+                                END IF;
+                            END $$;
                         """))
                     st.cache_data.clear()
                     st.success("✅ Todos los folios han sido renumerados en orden consecutivo.")
