@@ -50,7 +50,7 @@ def init_db():
 init_db()
 
 # -----------------------------------------------------------
-# 2. GENERADOR DE PDF CON MARCA SOLIDARISTAS
+# 2. GENERADOR DE PDF MODERNO Y ATRACTIVO (DISEÑO RENOVADO)
 # -----------------------------------------------------------
 class SolicitudPDF(FPDF):
     def __init__(self, logo_path=None):
@@ -58,110 +58,164 @@ class SolicitudPDF(FPDF):
         self.logo_path = logo_path
 
     def header(self):
-        self.set_fill_color(26, 54, 93)
-        self.rect(0, 0, 210, 28, 'F')
+        # Franja superior estilizada
+        self.set_fill_color(26, 54, 93)  # Azul oscuro primario (#1A365D)
+        self.rect(0, 0, 210, 32, 'F')
         
+        self.set_fill_color(214, 158, 46) # Acento dorado (#D69E2E)
+        self.rect(0, 32, 210, 2, 'F')
+
+        # Logo opcional en el encabezado
         if self.logo_path and os.path.exists(self.logo_path):
             try:
-                self.image(self.logo_path, x=10, y=4, h=20)
+                self.image(self.logo_path, x=12, y=5, h=22)
             except Exception:
                 pass
 
-        self.set_font("Helvetica", "B", 16)
+        # Título principal
+        self.set_xy(50, 6)
+        self.set_font("Helvetica", "B", 18)
         self.set_text_color(255, 255, 255)
-        self.cell(0, 8, "SOLIDARISTAS", align="C", new_x="LMARGIN", new_y="NEXT")
-        self.set_font("Helvetica", "B", 11)
-        self.cell(0, 6, "SOLICITUD DE PERMISO LABORAL", align="C", new_x="LMARGIN", new_y="NEXT")
-        self.ln(6)
+        self.cell(0, 8, "SOLIDARISTAS", align="L", new_x="LMARGIN", new_y="NEXT")
+        
+        self.set_x(50)
+        self.set_font("Helvetica", "", 10)
+        self.set_text_color(226, 232, 240)
+        self.cell(0, 5, "GESTIÓN DE TALENTO HUMANO - SOLICITUD DE PERMISO", align="L")
+        self.ln(18)
 
     def footer(self):
-        self.set_y(-15)
-        self.set_font("Helvetica", "I", 8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, "SOLIDARISTAS - Documento generado automáticamente por el Sistema de Gestión.", align="C")
+        self.set_y(-18)
+        self.set_draw_color(226, 232, 240)
+        self.line(15, self.get_y(), 195, self.get_y())
+        self.ln(3)
+        self.set_font("Helvetica", "", 8)
+        self.set_text_color(113, 128, 150)
+        self.cell(0, 5, "SOLIDARISTAS | Documento Digital Oficial de Control de Asistencia", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 4, f"Página {self.page_no()}", align="C")
 
 def generar_pdf_solicitud(datos, logo_path=None):
     pdf = SolicitudPDF(logo_path=logo_path)
+    pdf.set_margins(15, 15, 15)
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=20)
     
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.set_text_color(40, 40, 40)
-    pdf.cell(100, 6, f"Folio N°: #{datos['id']}")
+    # --- ENCABEZADO DE DOCUMENTO / BADGE DE ESTADO ---
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(45, 55, 72)
+    pdf.cell(100, 8, f"FOLIO: #{datos['id']:05d}")
     
+    # Badge según el Estado
     estado_str = str(datos['estado']).upper()
     if estado_str == "APROBADO":
-        pdf.set_text_color(40, 167, 69)
+        fill_color, text_color = (220, 252, 231), (22, 101, 52)
     elif estado_str == "RECHAZADO":
-        pdf.set_text_color(220, 53, 69)
+        fill_color, text_color = (254, 226, 226), (153, 27, 27)
     else:
-        pdf.set_text_color(255, 193, 7)
-        
-    pdf.cell(0, 6, f"ESTADO: {estado_str}", align="R", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_text_color(100, 100, 100)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.cell(0, 6, f"Fecha de Emisión: {datos['fecha_solicitud']}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(4)
+        fill_color, text_color = (254, 243, 199), (146, 64, 14)
 
-    def crear_seccion(titulo):
+    pdf.set_fill_color(*fill_color)
+    pdf.set_text_color(*text_color)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(80, 8, f"  ESTADO: {estado_str}  ", align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(113, 128, 150)
+    pdf.cell(0, 5, f"Fecha de emisión del reporte: {datos['fecha_solicitud']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Helper para Secciones
+    def render_seccion(titulo):
         pdf.set_fill_color(237, 242, 247)
         pdf.set_text_color(26, 54, 93)
         pdf.set_font("Helvetica", "B", 10)
         pdf.cell(0, 7, f"  {titulo}", fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
-    crear_seccion("1. INFORMACIÓN DEL COLABORADOR")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.set_text_color(50, 50, 50)
-    
-    pdf.cell(50, 6, "Nombre Completo:", border=0)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 6, str(datos['nombre_colaborador']), border=0, new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(50, 6, "Departamento / Área:", border=0)
-    pdf.cell(0, 6, str(datos['departamento']), border=0, new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.cell(50, 6, "Jefe Inmediato:", border=0)
-    pdf.cell(0, 6, str(datos['jefe_inmediato']), border=0, new_x="LMARGIN", new_y="NEXT")
+    # Helper para Tablas de Datos
+    def render_fila(label1, valor1, label2="", valor2=""):
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(74, 85, 104)
+        pdf.cell(40, 6, label1, border=0)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(26, 32, 44)
+        pdf.cell(50, 6, str(valor1), border=0)
+        
+        if label2:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(74, 85, 104)
+            pdf.cell(40, 6, label2, border=0)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(26, 32, 44)
+            pdf.cell(50, 6, str(valor2), border=0)
+        pdf.ln(6)
+
+    # --- SECCIÓN 1: DATOS DEL COLABORADOR ---
+    render_seccion("1. INFORMACIÓN DEL COLABORADOR")
+    render_fila("Nombre Completo:", datos['nombre_colaborador'], "Departamento:", datos['departamento'])
+    render_fila("Jefe Inmediato:", datos['jefe_inmediato'])
     pdf.ln(4)
 
-    crear_seccion("2. DETALLES DEL PERMISO")
-    pdf.set_font("Helvetica", "", 10)
-    
-    pdf.cell(50, 6, "Tipo de Permiso:", border=0)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 6, str(datos['tipo_permiso']), border=0, new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(50, 6, "Período Solicitado:", border=0)
-    pdf.cell(0, 6, f"Desde {datos['fecha_inicio']} hasta {datos['fecha_fin']}", border=0, new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.cell(50, 6, "Duración Total:", border=0)
-    pdf.cell(0, 6, f"{datos['cantidad']} {datos['unidad']}", border=0, new_x="LMARGIN", new_y="NEXT")
+    # --- SECCIÓN 2: DETALLES DE LA SOLICITUD ---
+    render_seccion("2. DETALLES DEL PERMISO")
+    render_fila("Tipo de Permiso:", datos['tipo_permiso'], "Duración:", f"{datos['cantidad']} {datos['unidad']}")
+    render_fila("Fecha de Inicio:", datos['fecha_inicio'], "Fecha de Fin:", datos['fecha_fin'])
     pdf.ln(4)
 
-    crear_seccion("3. MOTIVO Y JUSTIFICACIÓN")
-    pdf.set_font("Helvetica", "I", 9)
-    motivo_text = str(datos['motivo']) if datos['motivo'] else "Sin justificación adicional especificada."
-    pdf.multi_cell(0, 5, motivo_text, border=1)
+    # --- SECCIÓN 3: MOTIVO Y JUSTIFICACIÓN ---
+    render_seccion("3. MOTIVO Y JUSTIFICACIÓN")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(45, 55, 72)
+    motivo_text = str(datos['motivo']).strip() if datos['motivo'] else "Sin observaciones adicionales."
+    pdf.set_fill_color(247, 250, 252)
+    pdf.multi_cell(0, 5, motivo_text, border=1, fill=True)
     pdf.ln(8)
 
-    crear_seccion("4. CONFORMIDAD Y FIRMAS")
-    pdf.ln(12)
+    # --- SECCIÓN 4: TARJETAS DE CONFORMIDAD Y FIRMAS ---
+    render_seccion("4. CONFORMIDAD Y VALIDACIÓN DIGITAL")
+    pdf.ln(4)
+
+    y_inicio_firmas = pdf.get_y()
+
+    # Caja Colaborador
+    pdf.set_draw_color(226, 232, 240)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(15, y_inicio_firmas, 85, 38, 'DF')
     
-    y_actual = pdf.get_y()
-    pdf.set_draw_color(150, 150, 150)
-    pdf.line(20, y_actual, 85, y_actual)
-    pdf.line(125, y_actual, 190, y_actual)
-
+    pdf.set_xy(18, y_inicio_firmas + 4)
     pdf.set_font("Helvetica", "B", 9)
-    pdf.set_xy(20, y_actual + 2)
-    pdf.multi_cell(65, 4, f"{datos['nombre_colaborador']}\nColaborador Solicitante\nFirma Digital: {datos['firma_colaborador']}", align="C")
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(79, 5, "COLABORADOR SOLICITANTE", align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_x(18)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(74, 85, 104)
+    pdf.cell(79, 4, str(datos['nombre_colaborador']), align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_xy(18, y_inicio_firmas + 22)
+    st_colab = "✅ FIRMADO DIGITALMENTE" if datos['firma_colaborador'] == 'Sí' else "❌ PENDIENTE DE FIRMA"
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(34, 197, 94) if datos['firma_colaborador'] == 'Sí' else pdf.set_text_color(239, 68, 68)
+    pdf.cell(79, 5, st_colab, align="C")
 
-    pdf.set_xy(125, y_actual + 2)
-    pdf.multi_cell(65, 4, f"{datos['jefe_inmediato']}\nJefe Inmediato / Autoriza\nFirma Digital: {datos['firma_jefe']}", align="C")
+    # Caja Jefe Inmediato
+    pdf.rect(110, y_inicio_firmas, 85, 38, 'DF')
+    
+    pdf.set_xy(113, y_inicio_firmas + 4)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(26, 54, 93)
+    pdf.cell(79, 5, "JEFE INMEDIATO / AUTORIZA", align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_x(113)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(74, 85, 104)
+    pdf.cell(79, 4, str(datos['jefe_inmediato']), align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_xy(113, y_inicio_firmas + 22)
+    st_jefe = "✅ AUTORIZADO DIGITALMENTE" if datos['firma_jefe'] == 'Sí' else "❌ PENDIENTE DE AUTORIZACIÓN"
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(34, 197, 94) if datos['firma_jefe'] == 'Sí' else pdf.set_text_color(239, 68, 68)
+    pdf.cell(79, 5, st_jefe, align="C")
 
     return bytes(pdf.output())
 
@@ -341,7 +395,6 @@ elif opcion == "📊 Base de Datos":
 
         st.markdown("---")
         
-        # Pestañas para organizar la Edición, Eliminación y PDF
         tab_pdf, tab_editar, tab_eliminar = st.tabs(["📄 Generar PDF", "✏️ Modificar Registro", "🗑️ Eliminar Registro"])
 
         # TAB GENERAR PDF
