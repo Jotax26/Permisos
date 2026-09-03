@@ -1,56 +1,55 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import os
 from datetime import datetime
 from fpdf import FPDF
+from sqlalchemy import create_engine, text
 
 # -----------------------------------------------------------
-# 1. CONFIGURACIÓN Y BASE DE DATOS SQLITE
+# 1. CONEXIÓN A BASE DE DATOS NEON.TECH (POSTGRESQL)
 # -----------------------------------------------------------
-DATA_DIR = "/var/data" if os.path.exists("/var/data") else "."
-DB_PATH = os.path.join(DATA_DIR, "permisos.db")
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_engine():
+    # Obtiene la URL desde los Secrets de Streamlit Cloud o variables de entorno
+    db_url = st.secrets.get("DATABASE_URL", os.getenv("DATABASE_URL"))
+    if not db_url:
+        st.error("❌ No se encontró la variable DATABASE_URL en los Secrets.")
+        st.stop()
+    # psycopg2 requiere 'postgresql://' en lugar de 'postgres://'
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    return create_engine(db_url, pool_pre_ping=True)
 
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Tabla de Empleados / Personal (Para autocomplete)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS empleados (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre_colaborador TEXT UNIQUE,
-            departamento TEXT,
-            jefe_inmediato TEXT
-        )
-    ''')
-
-    # Tabla de Solicitudes de Permisos
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS solicitudes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha_solicitud TEXT,
-            nombre_colaborador TEXT,
-            departamento TEXT,
-            jefe_inmediato TEXT,
-            tipo_permiso TEXT,
-            fecha_inicio TEXT,
-            fecha_fin TEXT,
-            cantidad REAL,
-            unidad TEXT,
-            motivo TEXT,
-            estado TEXT DEFAULT 'Pendiente',
-            firma_colaborador TEXT,
-            firma_jefe TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Tabla de Empleados
+        conn.execute(text('''
+            CREATE TABLE IF NOT EXISTS empleados (
+                id SERIAL PRIMARY KEY,
+                nombre_colaborador TEXT UNIQUE NOT NULL,
+                departamento TEXT,
+                jefe_inmediato TEXT
+            );
+        '''))
+        # Tabla de Solicitudes
+        conn.execute(text('''
+            CREATE TABLE IF NOT EXISTS solicitudes (
+                id SERIAL PRIMARY KEY,
+                fecha_solicitud TEXT,
+                nombre_colaborador TEXT,
+                departamento TEXT,
+                jefe_inmediato TEXT,
+                tipo_permiso TEXT,
+                fecha_inicio TEXT,
+                fecha_fin TEXT,
+                cantidad REAL,
+                unidad TEXT,
+                motivo TEXT,
+                estado TEXT DEFAULT 'Pendiente',
+                firma_colaborador TEXT,
+                firma_jefe TEXT
+            );
+        '''))
 
 init_db()
 
@@ -63,11 +62,9 @@ class SolicitudPDF(FPDF):
         self.logo_path = logo_path
 
     def header(self):
-        # Banner superior azul
-        self.set_fill_color(26, 54, 93) # Azul marino
+        self.set_fill_color(26, 54, 93)
         self.rect(0, 0, 210, 28, 'F')
         
-        # Logo en PDF si existe
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 self.image(self.logo_path, x=10, y=4, h=20)
@@ -92,12 +89,10 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Folio y Estado
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 40)
     pdf.cell(100, 6, f"Folio N°: #{datos['id']}")
     
-    # Estado con color según el valor
     estado_str = str(datos['estado']).upper()
     if estado_str == "APROBADO":
         pdf.set_text_color(40, 167, 69)
@@ -113,7 +108,6 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.cell(0, 6, f"Fecha de Emisión: {datos['fecha_solicitud']}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Función auxiliar para encabezado de secciones
     def crear_seccion(titulo):
         pdf.set_fill_color(237, 242, 247)
         pdf.set_text_color(26, 54, 93)
@@ -121,7 +115,6 @@ def generar_pdf_solicitud(datos, logo_path=None):
         pdf.cell(0, 7, f"  {titulo}", fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
-    # Sección 1: Información del Colaborador
     crear_seccion("1. INFORMACIÓN DEL COLABORADOR")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(50, 50, 50)
@@ -138,7 +131,6 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.cell(0, 6, str(datos['jefe_inmediato']), border=0, new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Sección 2: Detalles del Permiso
     crear_seccion("2. DETALLES DEL PERMISO")
     pdf.set_font("Helvetica", "", 10)
     
@@ -154,14 +146,12 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.cell(0, 6, f"{datos['cantidad']} {datos['unidad']}", border=0, new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Sección 3: Motivo
     crear_seccion("3. MOTIVO Y JUSTIFICACIÓN")
     pdf.set_font("Helvetica", "I", 9)
     motivo_text = str(datos['motivo']) if datos['motivo'] else "Sin justificación adicional especificada."
     pdf.multi_cell(0, 5, motivo_text, border=1)
     pdf.ln(8)
 
-    # Sección 4: Firmas
     crear_seccion("4. CONFORMIDAD Y FIRMAS")
     pdf.ln(12)
     
@@ -180,11 +170,10 @@ def generar_pdf_solicitud(datos, logo_path=None):
     return bytes(pdf.output())
 
 # -----------------------------------------------------------
-# 3. INTERFAZ EN STREAMLIT CON LOGO Y NOMBRE "SOLIDARISTAS"
+# 3. INTERFAZ EN STREAMLIT
 # -----------------------------------------------------------
 st.set_page_config(page_title="SOLIDARISTAS - Gestión de Permisos", page_icon="🏢", layout="wide")
 
-# Gestión del Logo
 LOGO_PATH = "logo.png"
 uploaded_logo = st.sidebar.file_uploader("Cargar Logo de la Empresa", type=["png", "jpg", "jpeg"])
 
@@ -192,7 +181,6 @@ if uploaded_logo is not None:
     with open(LOGO_PATH, "wb") as f:
         f.write(uploaded_logo.getbuffer())
 
-# Encabezado Principal en la App
 col_logo, col_titulo = st.columns([1, 5])
 
 with col_logo:
@@ -210,15 +198,15 @@ st.sidebar.title("SOLIDARISTAS")
 menu = ["➕ Nueva Solicitud", "👤 Gestión de Personal", "📊 Base de Datos", "📈 Métricas"]
 opcion = st.sidebar.selectbox("Navegación", menu)
 
+engine = get_engine()
+
 # -----------------------------------------------------------
 # OPCIÓN 1: NUEVA SOLICITUD
 # -----------------------------------------------------------
 if opcion == "➕ Nueva Solicitud":
     st.subheader("Formulario de Solicitud")
 
-    conn = get_db_connection()
-    empleados_df = pd.read_sql_query("SELECT * FROM empleados ORDER BY nombre_colaborador ASC", conn)
-    conn.close()
+    empleados_df = pd.read_sql_query("SELECT * FROM empleados ORDER BY nombre_colaborador ASC", engine)
 
     lista_empleados = ["-- Seleccionar Colaborador --", "➕ Registrar Nuevo Colaborador"] + empleados_df["nombre_colaborador"].tolist()
     
@@ -273,33 +261,42 @@ if opcion == "➕ Nueva Solicitud":
             if not nombre.strip():
                 st.error("⚠️ El nombre del colaborador es obligatorio.")
             else:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                # 1. Guardar o actualizar colaborador en la base de datos
-                cursor.execute('''
-                    INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(nombre_colaborador) DO UPDATE SET
-                        departamento = excluded.departamento,
-                        jefe_inmediato = excluded.jefe_inmediato
-                ''', (nombre.strip(), departamento, jefe.strip()))
+                with engine.begin() as conn:
+                    # Guardar o actualizar colaborador (UPSERT en PostgreSQL)
+                    upsert_emp = text('''
+                        INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato)
+                        VALUES (:nombre, :dpto, :jefe)
+                        ON CONFLICT (nombre_colaborador) 
+                        DO UPDATE SET departamento = EXCLUDED.departamento, jefe_inmediato = EXCLUDED.jefe_inmediato;
+                    ''')
+                    conn.execute(upsert_emp, {
+                        "nombre": nombre.strip(),
+                        "dpto": departamento,
+                        "jefe": jefe.strip()
+                    })
 
-                # 2. Guardar la solicitud
-                query = '''
-                    INSERT INTO solicitudes 
-                    (fecha_solicitud, nombre_colaborador, departamento, jefe_inmediato, 
-                     tipo_permiso, fecha_inicio, fecha_fin, cantidad, unidad, motivo, estado, firma_colaborador, firma_jefe)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?)
-                '''
-                cursor.execute(query, (
-                    str(fecha_solicitud), nombre.strip(), departamento, jefe.strip(),
-                    tipo_permiso, str(fecha_inicio), str(fecha_fin), cantidad, unidad, motivo,
-                    "Sí" if firma_colab else "No", "Sí" if firma_jefe else "No"
-                ))
-                conn.commit()
-                conn.close()
-                st.success("✅ Solicitud guardada con éxito y persona registrada/actualizada.")
+                    # Insertar solicitud
+                    insert_sol = text('''
+                        INSERT INTO solicitudes 
+                        (fecha_solicitud, nombre_colaborador, departamento, jefe_inmediato, 
+                         tipo_permiso, fecha_inicio, fecha_fin, cantidad, unidad, motivo, estado, firma_colaborador, firma_jefe)
+                        VALUES (:fecha_sol, :nombre, :dpto, :jefe, :tipo, :f_ini, :f_fin, :cant, :uni, :mot, 'Pendiente', :f_col, :f_jef);
+                    ''')
+                    conn.execute(insert_sol, {
+                        "fecha_sol": str(fecha_solicitud),
+                        "nombre": nombre.strip(),
+                        "dpto": departamento,
+                        "jefe": jefe.strip(),
+                        "tipo": tipo_permiso,
+                        "f_ini": str(fecha_inicio),
+                        "f_fin": str(fecha_fin),
+                        "cant": cantidad,
+                        "uni": unidad,
+                        "mot": motivo,
+                        "f_col": "Sí" if firma_colab else "No",
+                        "f_jef": "Sí" if firma_jefe else "No"
+                    })
+                st.success("✅ Solicitud guardada con éxito en Neon PostgreSQL.")
 
 # -----------------------------------------------------------
 # OPCIÓN 2: GESTIÓN DE PERSONAL
@@ -308,9 +305,7 @@ elif opcion == "👤 Gestión de Personal":
     st.subheader("Catálogo de Colaboradores Registrados")
     st.caption("Los colaboradores guardados aquí se autocompletan en el formulario.")
 
-    conn = get_db_connection()
-    df_emp = pd.read_sql_query("SELECT * FROM empleados ORDER BY nombre_colaborador ASC", conn)
-    conn.close()
+    df_emp = pd.read_sql_query("SELECT * FROM empleados ORDER BY nombre_colaborador ASC", engine)
 
     if not df_emp.empty:
         st.dataframe(df_emp[["id", "nombre_colaborador", "departamento", "jefe_inmediato"]], use_container_width=True)
@@ -326,18 +321,16 @@ elif opcion == "👤 Gestión de Personal":
 
             if btn_emp:
                 if n_nombre.strip():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
                     try:
-                        cursor.execute("INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato) VALUES (?, ?, ?)",
-                                       (n_nombre.strip(), n_dpto, n_jefe.strip()))
-                        conn.commit()
+                        with engine.begin() as conn:
+                            conn.execute(
+                                text("INSERT INTO empleados (nombre_colaborador, departamento, jefe_inmediato) VALUES (:n, :d, :j)"),
+                                {"n": n_nombre.strip(), "d": n_dpto, "j": n_jefe.strip()}
+                            )
                         st.success(f"Colaborador {n_nombre} registrado correctamente.")
                         st.rerun()
-                    except sqlite3.IntegrityError:
+                    except Exception:
                         st.error("El colaborador ya existe en la base de datos.")
-                    finally:
-                        conn.close()
 
 # -----------------------------------------------------------
 # OPCIÓN 3: BASE DE DATOS Y DESCARGA DE PDF
@@ -345,9 +338,7 @@ elif opcion == "👤 Gestión de Personal":
 elif opcion == "📊 Base de Datos":
     st.subheader("Histórico de Solicitudes")
 
-    conn = get_db_connection()
-    df = pd.read_sql_query("SELECT * FROM solicitudes ORDER BY id DESC", conn)
-    conn.close()
+    df = pd.read_sql_query("SELECT * FROM solicitudes ORDER BY id DESC", engine)
 
     if df.empty:
         st.info("No hay solicitudes registradas.")
@@ -385,11 +376,11 @@ elif opcion == "📊 Base de Datos":
         with col_c:
             st.write("")
             if st.button("Actualizar Estado"):
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE solicitudes SET estado = ? WHERE id = ?", (nuevo_estado, sol_id))
-                conn.commit()
-                conn.close()
+                with engine.begin() as conn:
+                    conn.execute(
+                        text("UPDATE solicitudes SET estado = :e WHERE id = :id"),
+                        {"e": nuevo_estado, "id": sol_id}
+                    )
                 st.success(f"Estado de la solicitud #{sol_id} actualizado.")
                 st.rerun()
 
@@ -398,9 +389,7 @@ elif opcion == "📊 Base de Datos":
 # -----------------------------------------------------------
 elif opcion == "📈 Métricas":
     st.subheader("Métricas de Gestión - SOLIDARISTAS")
-    conn = get_db_connection()
-    df = pd.read_sql_query("SELECT * FROM solicitudes", conn)
-    conn.close()
+    df = pd.read_sql_query("SELECT * FROM solicitudes", engine)
 
     if not df.empty:
         m1, m2, m3, m4 = st.columns(4)
