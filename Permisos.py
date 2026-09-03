@@ -50,7 +50,7 @@ def init_db():
 init_db()
 
 # -----------------------------------------------------------
-# 2. GENERADOR DE PDF COMPATIBLE (SIN EMOJIS / LATIN-1 SAFE)
+# 2. GENERADOR DE PDF REDISEÑADO Y COMPATIBLE
 # -----------------------------------------------------------
 class SolicitudPDF(FPDF):
     def __init__(self, logo_path=None):
@@ -62,26 +62,28 @@ class SolicitudPDF(FPDF):
         self.set_fill_color(26, 54, 93)
         self.rect(0, 0, 210, 32, 'F')
         
-        # Franja dorada
+        # Franja decorativa dorada
         self.set_fill_color(214, 158, 46)
         self.rect(0, 32, 210, 2, 'F')
 
+        # Control del logo sin solapamiento
         if self.logo_path and os.path.exists(self.logo_path):
             try:
-                self.image(self.logo_path, x=12, y=5, h=22)
+                self.image(self.logo_path, x=12, y=6, w=40, h=18)
             except Exception:
                 pass
 
-        self.set_xy(50, 6)
-        self.set_font("Helvetica", "B", 18)
+        # Texto del encabezado con sangría amplia (x=60)
+        self.set_xy(60, 7)
+        self.set_font("Helvetica", "B", 16)
         self.set_text_color(255, 255, 255)
-        self.cell(0, 8, "SOLIDARISTAS", align="L", new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 7, "SOLIDARISTAS", align="L", new_x="LMARGIN", new_y="NEXT")
         
-        self.set_x(50)
-        self.set_font("Helvetica", "", 10)
+        self.set_x(60)
+        self.set_font("Helvetica", "", 9)
         self.set_text_color(226, 232, 240)
-        self.cell(0, 5, "GESTION DE TALENTO HUMANO - SOLICITUD DE PERMISO", align="L")
-        self.ln(18)
+        self.cell(0, 5, "GESTION DE TALENTO HUMANO | SOLICITUD DE PERMISO", align="L")
+        self.ln(16)
 
     def footer(self):
         self.set_y(-18)
@@ -90,11 +92,11 @@ class SolicitudPDF(FPDF):
         self.ln(3)
         self.set_font("Helvetica", "", 8)
         self.set_text_color(113, 128, 150)
-        self.cell(0, 5, "SOLIDARISTAS | Documento Digital Oficial de Control de Asistencia", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 4, "SOLIDARISTAS | Documento Oficial de Control de Asistencia", align="C", new_x="LMARGIN", new_y="NEXT")
         self.cell(0, 4, f"Pagina {self.page_no()}", align="C")
 
 def clean_text(txt):
-    """Limpia el texto para asegurar compatibilidad con la codificacion Latin-1 de FPDF"""
+    """Limpia el texto para asegurar compatibilidad con la codificación Latin-1 de FPDF"""
     if txt is None:
         return ""
     return str(txt).encode('latin-1', 'replace').decode('latin-1')
@@ -105,12 +107,12 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=20)
     
-    # --- ENCABEZADO DE DOCUMENTO / BADGE DE ESTADO ---
+    # --- CABECERA DE DOCUMENTO (FOLIO Y ESTADO) ---
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(45, 55, 72)
     pdf.cell(100, 8, f"FOLIO: #{datos['id']:05d}")
     
-    # Badge según el Estado
+    # Badge de Estado
     estado_str = clean_text(datos['estado']).upper()
     if estado_str == "APROBADO":
         fill_color, text_color = (220, 252, 231), (22, 101, 52)
@@ -121,109 +123,111 @@ def generar_pdf_solicitud(datos, logo_path=None):
 
     pdf.set_fill_color(*fill_color)
     pdf.set_text_color(*text_color)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(80, 8, f"  ESTADO: {estado_str}  ", align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(80, 8, f"ESTADO: {estado_str}", align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
     
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Helvetica", "", 8)
     pdf.set_text_color(113, 128, 150)
-    pdf.cell(0, 5, f"Fecha de emision del reporte: {clean_text(datos['fecha_solicitud'])}", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
+    pdf.cell(0, 5, f"Fecha de emision: {clean_text(datos['fecha_solicitud'])}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
 
     def render_seccion(titulo):
-        pdf.set_fill_color(237, 242, 247)
-        pdf.set_text_color(26, 54, 93)
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 7, f"  {clean_text(titulo)}", fill=True, new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2)
-
-    def render_fila(label1, valor1, label2="", valor2=""):
+        pdf.set_fill_color(241, 245, 249)
+        pdf.set_draw_color(203, 213, 225)
+        pdf.set_text_color(30, 41, 59)
         pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(74, 85, 104)
-        pdf.cell(40, 6, clean_text(label1), border=0)
+        pdf.cell(0, 6, f"   {clean_text(titulo)}", fill=True, border='B', new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+
+    def render_bloque(label1, val1, label2, val2):
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(100, 116, 139)
+        pdf.cell(35, 5, clean_text(label1))
         pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(26, 32, 44)
-        pdf.cell(50, 6, clean_text(valor1), border=0)
-        
-        if label2:
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.set_text_color(74, 85, 104)
-            pdf.cell(40, 6, clean_text(label2), border=0)
-            pdf.set_font("Helvetica", "", 9)
-            pdf.set_text_color(26, 32, 44)
-            pdf.cell(50, 6, clean_text(valor2), border=0)
-        pdf.ln(6)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(55, 5, clean_text(val1))
+
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(100, 116, 139)
+        pdf.cell(35, 5, clean_text(label2))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(55, 5, clean_text(val2), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
 
     # --- SECCIÓN 1: DATOS DEL COLABORADOR ---
     render_seccion("1. INFORMACION DEL COLABORADOR")
-    render_fila("Nombre Completo:", datos['nombre_colaborador'], "Departamento:", datos['departamento'])
-    render_fila("Jefe Inmediato:", datos['jefe_inmediato'])
-    pdf.ln(4)
+    render_bloque("Nombre Completo:", datos['nombre_colaborador'], "Departamento:", datos['departamento'])
+    render_bloque("Jefe Inmediato:", datos['jefe_inmediato'], "", "")
+    pdf.ln(2)
 
     # --- SECCIÓN 2: DETALLES DE LA SOLICITUD ---
     render_seccion("2. DETALLES DEL PERMISO")
-    render_fila("Tipo de Permiso:", datos['tipo_permiso'], "Duracion:", f"{datos['cantidad']} {datos['unidad']}")
-    render_fila("Fecha de Inicio:", datos['fecha_inicio'], "Fecha de Fin:", datos['fecha_fin'])
-    pdf.ln(4)
+    render_bloque("Tipo de Permiso:", datos['tipo_permiso'], "Duracion:", f"{datos['cantidad']} {datos['unidad']}")
+    render_bloque("Fecha Inicio:", datos['fecha_inicio'], "Fecha Fin:", datos['fecha_fin'])
+    pdf.ln(2)
 
     # --- SECCIÓN 3: MOTIVO Y JUSTIFICACIÓN ---
     render_seccion("3. MOTIVO Y JUSTIFICACION")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(45, 55, 72)
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(51, 65, 85)
     motivo_text = clean_text(datos['motivo']).strip() if datos['motivo'] else "Sin observaciones adicionales."
-    pdf.set_fill_color(247, 250, 252)
+    
+    pdf.set_fill_color(248, 250, 252)
+    pdf.set_draw_color(226, 232, 240)
     pdf.multi_cell(0, 5, motivo_text, border=1, fill=True)
-    pdf.ln(8)
+    pdf.ln(6)
 
     # --- SECCIÓN 4: CONFORMIDAD Y FIRMAS ---
     render_seccion("4. CONFORMIDAD Y VALIDACION DIGITAL")
-    pdf.ln(4)
+    pdf.ln(2)
 
-    y_inicio_firmas = pdf.get_y()
+    y_inicio = pdf.get_y()
 
     # Caja Colaborador
-    pdf.set_draw_color(226, 232, 240)
+    pdf.set_draw_color(203, 213, 225)
     pdf.set_fill_color(255, 255, 255)
-    pdf.rect(15, y_inicio_firmas, 85, 38, 'DF')
+    pdf.rect(15, y_inicio, 85, 34)
     
-    pdf.set_xy(18, y_inicio_firmas + 4)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(26, 54, 93)
-    pdf.cell(79, 5, "COLABORADOR SOLICITANTE", align="C", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_x(18)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_text_color(74, 85, 104)
-    pdf.cell(79, 4, clean_text(datos['nombre_colaborador']), align="C", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_xy(18, y_inicio_firmas + 22)
-    st_colab = "[ X ] FIRMADO DIGITALMENTE" if str(datos['firma_colaborador']).lower() in ['sí', 'si', 'yes', '1', 'true'] else "[  ] PENDIENTE DE FIRMA"
+    pdf.set_xy(15, y_inicio + 3)
     pdf.set_font("Helvetica", "B", 8)
-    pdf.set_text_color(34, 197, 94) if "[ X ]" in st_colab else pdf.set_text_color(239, 68, 68)
-    pdf.cell(79, 5, st_colab, align="C")
+    pdf.set_text_color(30, 41, 59)
+    pdf.cell(85, 4, "COLABORADOR SOLICITANTE", align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_x(15)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.cell(85, 4, clean_text(datos['nombre_colaborador']), align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_xy(15, y_inicio + 22)
+    st_colab = "[ X ] FIRMADO DIGITALMENTE" if str(datos['firma_colaborador']).lower() in ['sí', 'si', 'yes', '1', 'true'] else "[  ] PENDIENTE DE FIRMA"
+    pdf.set_font("Helvetica", "B", 7.5)
+    pdf.set_text_color(22, 101, 52) if "[ X ]" in st_colab else pdf.set_text_color(185, 28, 28)
+    pdf.cell(85, 4, st_colab, align="C")
 
     # Caja Jefe Inmediato
-    pdf.rect(110, y_inicio_firmas, 85, 38, 'DF')
+    pdf.rect(110, y_inicio, 85, 34)
     
-    pdf.set_xy(113, y_inicio_firmas + 4)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(26, 54, 93)
-    pdf.cell(79, 5, "JEFE INMEDIATO / AUTORIZA", align="C", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_x(113)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_text_color(74, 85, 104)
-    pdf.cell(79, 4, clean_text(datos['jefe_inmediato']), align="C", new_x="LMARGIN", new_y="NEXT")
-    
-    pdf.set_xy(113, y_inicio_firmas + 22)
-    st_jefe = "[ X ] AUTORIZADO DIGITALMENTE" if str(datos['firma_jefe']).lower() in ['sí', 'si', 'yes', '1', 'true'] else "[  ] PENDIENTE DE AUTORIZACION"
+    pdf.set_xy(110, y_inicio + 3)
     pdf.set_font("Helvetica", "B", 8)
-    pdf.set_text_color(34, 197, 94) if "[ X ]" in st_jefe else pdf.set_text_color(239, 68, 68)
-    pdf.cell(79, 5, st_jefe, align="C")
+    pdf.set_text_color(30, 41, 59)
+    pdf.cell(85, 4, "JEFE INMEDIATO / AUTORIZA", align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_x(110)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.cell(85, 4, clean_text(datos['jefe_inmediato']), align="C", new_x="LMARGIN", new_y="NEXT")
+    
+    pdf.set_xy(110, y_inicio + 22)
+    st_jefe = "[ X ] AUTORIZADO DIGITALMENTE" if str(datos['firma_jefe']).lower() in ['sí', 'si', 'yes', '1', 'true'] else "[  ] PENDIENTE DE AUTORIZACION"
+    pdf.set_font("Helvetica", "B", 7.5)
+    pdf.set_text_color(22, 101, 52) if "[ X ]" in st_jefe else pdf.set_text_color(185, 28, 28)
+    pdf.cell(85, 4, st_jefe, align="C")
 
     return bytes(pdf.output())
 
 # -----------------------------------------------------------
-# 3. INTERFAZ EN STREAMLIT
+# 3. INTERFAZ DE USUARIO EN STREAMLIT
 # -----------------------------------------------------------
 st.set_page_config(page_title="SOLIDARISTAS - Gestión de Permisos", page_icon="🏢", layout="wide")
 
@@ -253,9 +257,7 @@ opcion = st.sidebar.selectbox("Navegación", menu)
 
 engine = get_engine()
 
-# -----------------------------------------------------------
-# OPCIÓN 1: NUEVA SOLICITUD
-# -----------------------------------------------------------
+# --- OPCIÓN 1: NUEVA SOLICITUD ---
 if opcion == "➕ Nueva Solicitud":
     st.subheader("Formulario de Solicitud")
 
@@ -347,11 +349,9 @@ if opcion == "➕ Nueva Solicitud":
                         "f_col": "Sí" if firma_colab else "No",
                         "f_jef": "Sí" if firma_jefe else "No"
                     })
-                st.success("✅ Solicitud guardada con éxito en Neon PostgreSQL.")
+                st.success("✅ Solicitud guardada con éxito.")
 
-# -----------------------------------------------------------
-# OPCIÓN 2: GESTIÓN DE PERSONAL
-# -----------------------------------------------------------
+# --- OPCIÓN 2: GESTIÓN DE PERSONAL ---
 elif opcion == "👤 Gestión de Personal":
     st.subheader("Catálogo de Colaboradores Registrados")
     st.caption("Los colaboradores guardados aquí se autocompletan en el formulario.")
@@ -383,9 +383,7 @@ elif opcion == "👤 Gestión de Personal":
                     except Exception:
                         st.error("El colaborador ya existe en la base de datos.")
 
-# -----------------------------------------------------------
-# OPCIÓN 3: BASE DE DATOS, EDICIÓN, ELIMINACIÓN Y PDF
-# -----------------------------------------------------------
+# --- OPCIÓN 3: BASE DE DATOS Y GENERACIÓN DE PDF ---
 elif opcion == "📊 Base de Datos":
     st.subheader("Histórico de Solicitudes")
 
@@ -395,12 +393,11 @@ elif opcion == "📊 Base de Datos":
         st.info("No hay solicitudes registradas.")
     else:
         st.dataframe(df, use_container_width=True)
-
         st.markdown("---")
         
         tab_pdf, tab_editar, tab_eliminar = st.tabs(["📄 Generar PDF", "✏️ Modificar Registro", "🗑️ Eliminar Registro"])
 
-        # TAB GENERAR PDF
+        # TAB PDF
         with tab_pdf:
             col_pdf1, col_pdf2 = st.columns([1, 2])
             with col_pdf1:
@@ -419,9 +416,9 @@ elif opcion == "📊 Base de Datos":
                         mime="application/pdf"
                     )
 
-        # TAB MODIFICAR REGISTRO
+        # TAB MODIFICAR
         with tab_editar:
-            id_edit = st.selectbox("Selecciona el ID del registro a editar", df["id"].tolist(), key="sb_edit")
+            id_edit = st.selectbox("Selecciona el ID a editar", df["id"].tolist(), key="sb_edit")
             registro = df[df["id"] == id_edit].iloc[0]
 
             dptos = ["Operaciones", "Tecnología", "Finanzas", "Talento Humano", "Ventas", "Logística"]
@@ -457,46 +454,35 @@ elif opcion == "📊 Base de Datos":
 
                 if btn_guardar_edit:
                     with engine.begin() as conn:
-                        update_query = text('''
+                        conn.execute(text('''
                             UPDATE solicitudes SET
-                                nombre_colaborador = :nombre,
-                                departamento = :dpto,
-                                jefe_inmediato = :jefe,
-                                tipo_permiso = :tipo,
-                                fecha_inicio = :f_ini,
-                                fecha_fin = :f_fin,
-                                cantidad = :cant,
-                                unidad = :uni,
-                                motivo = :mot,
-                                estado = :estado
+                                nombre_colaborador = :nombre, departamento = :dpto, jefe_inmediato = :jefe,
+                                tipo_permiso = :tipo, fecha_inicio = :f_ini, fecha_fin = :f_fin,
+                                cantidad = :cant, unidad = :uni, motivo = :mot, estado = :estado
                             WHERE id = :id
-                        ''')
-                        conn.execute(update_query, {
+                        '''), {
                             "nombre": e_nombre, "dpto": e_dpto, "jefe": e_jefe,
                             "tipo": e_tipo, "f_ini": str(e_f_inicio), "f_fin": str(e_f_fin),
                             "cant": e_cantidad, "uni": e_unidad, "mot": e_motivo,
                             "estado": e_estado, "id": id_edit
                         })
-                    st.success(f"✅ Permiso #{id_edit} actualizado con éxito.")
+                    st.success(f"✅ Permiso #{id_edit} actualizado.")
                     st.rerun()
 
-        # TAB ELIMINAR REGISTRO
+        # TAB ELIMINAR
         with tab_eliminar:
-            st.warning("⚠️ La eliminación es permanente y borrará el registro de la base de datos.")
-            id_del = st.selectbox("Selecciona el ID del registro a eliminar", df["id"].tolist(), key="sb_del")
-            
+            st.warning("⚠️ La eliminación borrará permanentemente el registro.")
+            id_del = st.selectbox("Selecciona el ID a eliminar", df["id"].tolist(), key="sb_del")
             registro_del = df[df["id"] == id_del].iloc[0]
-            st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']} | **Inicio:** {registro_del['fecha_inicio']}")
+            st.write(f"**Colaborador:** {registro_del['nombre_colaborador']} | **Tipo:** {registro_del['tipo_permiso']}")
 
             if st.button("🗑️ Eliminar Definitivamente", type="primary"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
-                st.success(f"❌ Registro #{id_del} eliminado correctamente.")
+                st.success(f"❌ Registro #{id_del} eliminado.")
                 st.rerun()
 
-# -----------------------------------------------------------
-# OPCIÓN 4: MÉTRICAS
-# -----------------------------------------------------------
+# --- OPCIÓN 4: MÉTRICAS ---
 elif opcion == "📈 Métricas":
     st.subheader("Métricas de Gestión - SOLIDARISTAS")
     df = pd.read_sql_query("SELECT * FROM solicitudes", engine)
