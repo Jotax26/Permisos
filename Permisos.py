@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime, date
+from datetime import datetime, date, time
 from fpdf import FPDF
 from sqlalchemy import create_engine, text
 
-# Lista global de departamentos actualizada
+# Lista global de departamentos
 DEPARTAMENTOS = [
     "Administración", 
     "Taller", 
@@ -62,7 +62,7 @@ def init_db():
 init_db()
 
 # -----------------------------------------------------------
-# 2. GENERADOR DE PDF REDISEÑADO Y COMPATIBLE
+# 2. GENERADOR DE PDF COMPATIBLE
 # -----------------------------------------------------------
 class SolicitudPDF(FPDF):
     def __init__(self, logo_path=None):
@@ -70,22 +70,18 @@ class SolicitudPDF(FPDF):
         self.logo_path = logo_path
 
     def header(self):
-        # Franja superior azul
         self.set_fill_color(26, 54, 93)
         self.rect(0, 0, 210, 32, 'F')
         
-        # Franja decorativa dorada
         self.set_fill_color(214, 158, 46)
         self.rect(0, 32, 210, 2, 'F')
 
-        # Control del logo sin solapamiento
         if self.logo_path and os.path.exists(self.logo_path):
             try:
                 self.image(self.logo_path, x=12, y=6, w=40, h=18)
             except Exception:
                 pass
 
-        # Texto del encabezado desplazado a la derecha (x=60)
         self.set_xy(60, 7)
         self.set_font("Helvetica", "B", 16)
         self.set_text_color(255, 255, 255)
@@ -108,7 +104,6 @@ class SolicitudPDF(FPDF):
         self.cell(0, 4, f"Pagina {self.page_no()}", align="C")
 
 def clean_text(txt):
-    """Limpia el texto para asegurar compatibilidad con la codificación Latin-1 de FPDF"""
     if txt is None:
         return ""
     return str(txt).encode('latin-1', 'replace').decode('latin-1')
@@ -119,12 +114,10 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=20)
     
-    # --- CABECERA DE DOCUMENTO (FOLIO Y ESTADO) ---
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(45, 55, 72)
     pdf.cell(100, 8, f"FOLIO: #{datos['id']:05d}")
     
-    # Badge de Estado
     estado_str = clean_text(datos['estado']).upper()
     if estado_str == "APROBADO":
         fill_color, text_color = (220, 252, 231), (22, 101, 52)
@@ -167,19 +160,16 @@ def generar_pdf_solicitud(datos, logo_path=None):
         pdf.cell(55, 5, clean_text(val2), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
-    # --- SECCIÓN 1: DATOS DEL COLABORADOR ---
     render_seccion("1. INFORMACION DEL COLABORADOR")
     render_bloque("Nombre Completo:", datos['nombre_colaborador'], "Departamento:", datos['departamento'])
     render_bloque("Jefe Inmediato:", datos['jefe_inmediato'], "", "")
     pdf.ln(2)
 
-    # --- SECCIÓN 2: DETALLES DE LA SOLICITUD ---
     render_seccion("2. DETALLES DEL PERMISO")
     render_bloque("Tipo de Permiso:", datos['tipo_permiso'], "Duracion:", f"{datos['cantidad']} {datos['unidad']}")
     render_bloque("Fecha Inicio:", datos['fecha_inicio'], "Fecha Fin:", datos['fecha_fin'])
     pdf.ln(2)
 
-    # --- SECCIÓN 3: MOTIVO Y JUSTIFICACIÓN ---
     render_seccion("3. MOTIVO Y JUSTIFICACION")
     pdf.set_font("Helvetica", "", 8.5)
     pdf.set_text_color(51, 65, 85)
@@ -190,7 +180,6 @@ def generar_pdf_solicitud(datos, logo_path=None):
     pdf.multi_cell(0, 5, motivo_text, border=1, fill=True)
     pdf.ln(6)
 
-    # --- SECCIÓN 4: CONFORMIDAD Y FIRMAS ---
     render_seccion("4. CONFORMIDAD Y VALIDACION DIGITAL")
     pdf.ln(2)
 
@@ -298,8 +287,10 @@ if opcion == "➕ Nueva Solicitud":
             
             idx_dpto = DEPARTAMENTOS.index(dpto_def) if dpto_def in DEPARTAMENTOS else 0
             departamento = st.selectbox("Departamento / Área", DEPARTAMENTOS, index=idx_dpto)
-            
             jefe = st.text_input("Jefe Inmediato", value=jefe_def)
+            
+            # Campo de Estatus integrado en el formulario de captura
+            estado_solicitud = st.selectbox("Estatus de la Solicitud", ["Pendiente", "Aprobado", "Rechazado"], index=0)
         
         with col2:
             tipo_permiso = st.selectbox(
@@ -307,9 +298,43 @@ if opcion == "➕ Nueva Solicitud":
                 ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
             )
             unidad = st.radio("Unidad de Medida", ["Días", "Horas"], horizontal=True)
-            fecha_inicio = st.date_input("Fecha Inicio")
-            fecha_fin = st.date_input("Fecha Fin")
-            cantidad = st.number_input("Cantidad Solicitada", min_value=0.5, step=0.5)
+
+            # CÁLCULO AUTOMÁTICO DE DÍAS O HORAS
+            if unidad == "Días":
+                fecha_inicio = st.date_input("Fecha Inicio", date.today())
+                fecha_fin = st.date_input("Fecha Fin", date.today())
+                
+                if fecha_fin >= fecha_inicio:
+                    cantidad_calculada = float((fecha_fin - fecha_inicio).days + 1)
+                else:
+                    cantidad_calculada = 0.0
+                    st.error("⚠️ La fecha final no puede ser anterior a la inicial.")
+
+                str_fecha_inicio = str(fecha_inicio)
+                str_fecha_fin = str(fecha_fin)
+
+            else: # Permiso por Horas
+                fecha_permiso = st.date_input("Fecha del Permiso", date.today())
+                col_h1, col_h2 = st.columns(2)
+                with col_h1:
+                    hora_inicio = st.time_input("Hora Inicio", time(8, 0))
+                with col_h2:
+                    hora_fin = st.time_input("Hora Fin", time(17, 0))
+
+                dt_inicio = datetime.combine(fecha_permiso, hora_inicio)
+                dt_fin = datetime.combine(fecha_permiso, hora_fin)
+
+                if dt_fin > dt_inicio:
+                    diferencia_segs = (dt_fin - dt_inicio).total_seconds()
+                    cantidad_calculada = round(diferencia_segs / 3600.0, 2)
+                else:
+                    cantidad_calculada = 0.0
+                    st.error("⚠️ La hora de fin debe ser posterior a la hora de inicio.")
+
+                str_fecha_inicio = f"{fecha_permiso} {hora_inicio.strftime('%H:%M')}"
+                str_fecha_fin = f"{fecha_permiso} {hora_fin.strftime('%H:%M')}"
+
+            st.info(f"⏱️ **Tiempo total calculado automáticamente:** `{cantidad_calculada} {unidad}`")
 
         motivo = st.text_area("Motivo / Justificación Detallada")
         
@@ -326,6 +351,8 @@ if opcion == "➕ Nueva Solicitud":
         if enviar:
             if not nombre.strip():
                 st.error("⚠️ El nombre del colaborador es obligatorio.")
+            elif cantidad_calculada <= 0:
+                st.error("⚠️ El rango de fecha o tiempo especificado no es válido.")
             else:
                 with engine.begin() as conn:
                     upsert_emp = text('''
@@ -344,7 +371,7 @@ if opcion == "➕ Nueva Solicitud":
                         INSERT INTO solicitudes 
                         (fecha_solicitud, nombre_colaborador, departamento, jefe_inmediato, 
                          tipo_permiso, fecha_inicio, fecha_fin, cantidad, unidad, motivo, estado, firma_colaborador, firma_jefe)
-                        VALUES (:fecha_sol, :nombre, :dpto, :jefe, :tipo, :f_ini, :f_fin, :cant, :uni, :mot, 'Pendiente', :f_col, :f_jef);
+                        VALUES (:fecha_sol, :nombre, :dpto, :jefe, :tipo, :f_ini, :f_fin, :cant, :uni, :mot, :estado, :f_col, :f_jef);
                     ''')
                     conn.execute(insert_sol, {
                         "fecha_sol": str(fecha_solicitud),
@@ -352,16 +379,17 @@ if opcion == "➕ Nueva Solicitud":
                         "dpto": departamento,
                         "jefe": jefe.strip(),
                         "tipo": tipo_permiso,
-                        "f_ini": str(fecha_inicio),
-                        "f_fin": str(fecha_fin),
-                        "cant": cantidad,
+                        "f_ini": str_fecha_inicio,
+                        "f_fin": str_fecha_fin,
+                        "cant": cantidad_calculada,
                         "uni": unidad,
                         "mot": motivo,
+                        "estado": estado_solicitud,
                         "f_col": "Sí" if firma_colab else "No",
                         "f_jef": "Sí" if firma_jefe else "No"
                     })
                 st.cache_data.clear()
-                st.success("✅ Solicitud guardada con éxito en la base de datos.")
+                st.success(f"✅ Solicitud guardada con éxito con Estatus: '{estado_solicitud}'.")
 
 # --- OPCIÓN 2: GESTIÓN DE PERSONAL ---
 elif opcion == "👤 Gestión de Personal":
@@ -435,12 +463,6 @@ elif opcion == "📊 Base de Datos":
             registro = df[df["id"] == id_edit].iloc[0]
 
             tipos = ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
-            
-            def safe_date(date_str):
-                try:
-                    return datetime.strptime(str(date_str), "%Y-%m-%d").date()
-                except Exception:
-                    return date.today()
 
             with st.form("form_editar_registro"):
                 e_col1, e_col2 = st.columns(2)
@@ -456,8 +478,8 @@ elif opcion == "📊 Base de Datos":
                     e_tipo_idx = tipos.index(registro["tipo_permiso"]) if registro["tipo_permiso"] in tipos else 0
                     e_tipo = st.selectbox("Tipo de Permiso", tipos, index=e_tipo_idx)
                     e_unidad = st.radio("Unidad", ["Días", "Horas"], index=0 if registro["unidad"] == "Días" else 1, horizontal=True)
-                    e_f_inicio = st.date_input("Fecha Inicio", safe_date(registro["fecha_inicio"]))
-                    e_f_fin = st.date_input("Fecha Fin", safe_date(registro["fecha_fin"]))
+                    e_f_inicio = st.text_input("Fecha Inicio", str(registro["fecha_inicio"]))
+                    e_f_fin = st.text_input("Fecha Fin", str(registro["fecha_fin"]))
                     e_cantidad = st.number_input("Cantidad", value=float(registro["cantidad"]), min_value=0.5, step=0.5)
 
                 e_motivo = st.text_area("Motivo", value=str(registro["motivo"]))
@@ -493,10 +515,7 @@ elif opcion == "📊 Base de Datos":
             with col_del1:
                 if st.button("🗑️ Eliminar Registro", type="primary"):
                     with engine.begin() as conn:
-                        # 1. Eliminar la solicitud seleccionada
                         conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
-                        
-                        # 2. Reajuste seguro de la secuencia
                         conn.execute(text("""
                             DO $$
                             DECLARE
@@ -520,7 +539,6 @@ elif opcion == "📊 Base de Datos":
             with col_del2:
                 if st.button("🔄 Renumerar Folios Consecutivos"):
                     with engine.begin() as conn:
-                        # 1. Reordena e iguala los IDs existentes (1, 2, 3...) sin dejar huecos
                         conn.execute(text("""
                             WITH renumerado AS (
                                 SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS nuevo_id
@@ -531,8 +549,6 @@ elif opcion == "📊 Base de Datos":
                             FROM renumerado
                             WHERE solicitudes.id = renumerado.id;
                         """))
-                        
-                        # 2. Reajuste seguro de la secuencia
                         conn.execute(text("""
                             DO $$
                             DECLARE
