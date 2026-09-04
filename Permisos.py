@@ -59,8 +59,6 @@ def init_db():
             );
         '''))
 
-init_db()
-
 # -----------------------------------------------------------
 # 2. GENERADOR DE PDF COMPATIBLE
 # -----------------------------------------------------------
@@ -232,6 +230,11 @@ def generar_pdf_solicitud(datos, logo_path=None):
 # -----------------------------------------------------------
 st.set_page_config(page_title="SOLIDARISTAS - Gestión de Permisos", page_icon="🏢", layout="wide")
 
+try:
+    init_db()
+except Exception:
+    pass
+
 LOGO_PATH = "logo.png"
 uploaded_logo = st.sidebar.file_uploader("Cargar Logo de la Empresa", type=["png", "jpg", "jpeg"])
 
@@ -278,63 +281,77 @@ if opcion == "➕ Nueva Solicitud":
         dpto_def = emp_data["departamento"]
         jefe_def = emp_data["jefe_inmediato"]
 
+    st.markdown("### 1. Configuración de Fechas y Tiempo de Permiso")
+    
+    # --- CONTROLES INTERACTIVOS FUERA DEL FORM PARA CÁLCULO EN TIEMPO REAL ---
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        tipo_permiso = st.selectbox(
+            "Tipo de Permiso", 
+            ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
+        )
+    with col_t2:
+        unidad = st.radio("Unidad de Medida", ["Días", "Horas"], horizontal=True)
+
+    col_f1, col_f2 = st.columns(2)
+
+    # CÁLCULO AUTOMÁTICO E INSTANTÁNEO
+    if unidad == "Días":
+        with col_f1:
+            fecha_inicio = st.date_input("Fecha Inicio", date.today(), key="f_ini_input")
+        with col_f2:
+            fecha_fin = st.date_input("Fecha Fin", date.today(), key="f_fin_input")
+        
+        if fecha_fin >= fecha_inicio:
+            cantidad_calculada = float((fecha_fin - fecha_inicio).days + 1)
+        else:
+            cantidad_calculada = 0.0
+            st.error("⚠️ La fecha final no puede ser anterior a la inicial.")
+
+        str_fecha_inicio = str(fecha_inicio)
+        str_fecha_fin = str(fecha_fin)
+
+    else: # Permiso por Horas
+        with col_f1:
+            fecha_permiso = st.date_input("Fecha del Permiso", date.today(), key="f_perm_input")
+            hora_inicio = st.time_input("Hora Inicio", time(8, 0), key="h_ini_input")
+        with col_f2:
+            st.write("") # Espaciador para alinear con el input de fecha
+            hora_fin = st.time_input("Hora Fin", time(17, 0), key="h_fin_input")
+
+        dt_inicio = datetime.combine(fecha_permiso, hora_inicio)
+        dt_fin = datetime.combine(fecha_permiso, hora_fin)
+
+        if dt_fin > dt_inicio:
+            diferencia_segs = (dt_fin - dt_inicio).total_seconds()
+            cantidad_calculada = round(diferencia_segs / 3600.0, 2)
+        else:
+            cantidad_calculada = 0.0
+            st.error("⚠️ La hora de fin debe ser posterior a la hora de inicio.")
+
+        str_fecha_inicio = f"{fecha_permiso} {hora_inicio.strftime('%H:%M')}"
+        str_fecha_fin = f"{fecha_permiso} {hora_fin.strftime('%H:%M')}"
+
+    # Mostrar la cantidad en vivo
+    st.info(f"⏱️ **Tiempo total calculated en tiempo real:** `{cantidad_calculada} {unidad}`")
+
+    st.markdown("---")
+    st.markdown("### 2. Datos del Colaborador y Confirmación")
+
+    # --- FORMULARIO PARA CAPTURA Y ENVÍO A BD ---
     with st.form("form_permiso", clear_on_submit=False):
         col1, col2 = st.columns(2)
         
         with col1:
             fecha_solicitud = st.date_input("Fecha de Solicitud", datetime.now())
             nombre = st.text_input("Nombre Completo del Colaborador", value=nombre_def)
-            
             idx_dpto = DEPARTAMENTOS.index(dpto_def) if dpto_def in DEPARTAMENTOS else 0
             departamento = st.selectbox("Departamento / Área", DEPARTAMENTOS, index=idx_dpto)
-            jefe = st.text_input("Jefe Inmediato", value=jefe_def)
             
-            # Campo de Estatus integrado en el formulario de captura
-            estado_solicitud = st.selectbox("Estatus de la Solicitud", ["Pendiente", "Aprobado", "Rechazado"], index=0)
-        
         with col2:
-            tipo_permiso = st.selectbox(
-                "Tipo de Permiso", 
-                ["Cita Médica", "Incapacidad", "Vacaciones", "Permiso Personal", "Duelo / Luto", "Maternidad/Paternidad", "Otro"]
-            )
-            unidad = st.radio("Unidad de Medida", ["Días", "Horas"], horizontal=True)
-
-            # CÁLCULO AUTOMÁTICO DE DÍAS O HORAS
-            if unidad == "Días":
-                fecha_inicio = st.date_input("Fecha Inicio", date.today())
-                fecha_fin = st.date_input("Fecha Fin", date.today())
-                
-                if fecha_fin >= fecha_inicio:
-                    cantidad_calculada = float((fecha_fin - fecha_inicio).days + 1)
-                else:
-                    cantidad_calculada = 0.0
-                    st.error("⚠️ La fecha final no puede ser anterior a la inicial.")
-
-                str_fecha_inicio = str(fecha_inicio)
-                str_fecha_fin = str(fecha_fin)
-
-            else: # Permiso por Horas
-                fecha_permiso = st.date_input("Fecha del Permiso", date.today())
-                col_h1, col_h2 = st.columns(2)
-                with col_h1:
-                    hora_inicio = st.time_input("Hora Inicio", time(8, 0))
-                with col_h2:
-                    hora_fin = st.time_input("Hora Fin", time(17, 0))
-
-                dt_inicio = datetime.combine(fecha_permiso, hora_inicio)
-                dt_fin = datetime.combine(fecha_permiso, hora_fin)
-
-                if dt_fin > dt_inicio:
-                    diferencia_segs = (dt_fin - dt_inicio).total_seconds()
-                    cantidad_calculada = round(diferencia_segs / 3600.0, 2)
-                else:
-                    cantidad_calculada = 0.0
-                    st.error("⚠️ La hora de fin debe ser posterior a la hora de inicio.")
-
-                str_fecha_inicio = f"{fecha_permiso} {hora_inicio.strftime('%H:%M')}"
-                str_fecha_fin = f"{fecha_permiso} {hora_fin.strftime('%H:%M')}"
-
-            st.info(f"⏱️ **Tiempo total calculado automáticamente:** `{cantidad_calculada} {unidad}`")
+            jefe = st.text_input("Jefe Inmediato", value=jefe_def)
+            # Campo Estatus dentro del formulario
+            estado_solicitud = st.selectbox("Estatus de la Solicitud", ["Pendiente", "Aprobado", "Rechazado"], index=0)
 
         motivo = st.text_area("Motivo / Justificación Detallada")
         
@@ -346,7 +363,7 @@ if opcion == "➕ Nueva Solicitud":
         with c2:
             firma_jefe = st.checkbox("Firma Jefe Inmediato (Autorización Previa)")
 
-        enviar = st.form_submit_button("Guardar Solicitud")
+        enviar = st.form_submit_button("💾 Guardar Solicitud")
 
         if enviar:
             if not nombre.strip():
@@ -389,7 +406,7 @@ if opcion == "➕ Nueva Solicitud":
                         "f_jef": "Sí" if firma_jefe else "No"
                     })
                 st.cache_data.clear()
-                st.success(f"✅ Solicitud guardada con éxito con Estatus: '{estado_solicitud}'.")
+                st.success(f"✅ Solicitud guardada con éxito con Estatus: '{estado_solicitud}' ({cantidad_calculada} {unidad}).")
 
 # --- OPCIÓN 2: GESTIÓN DE PERSONAL ---
 elif opcion == "👤 Gestión de Personal":
@@ -516,7 +533,7 @@ elif opcion == "📊 Base de Datos":
                 if st.button("🗑️ Eliminar Registro", type="primary"):
                     with engine.begin() as conn:
                         conn.execute(text("DELETE FROM solicitudes WHERE id = :id"), {"id": id_del})
-                        conn.execute(text("""
+                        conn.execute(text('''
                             DO $$
                             DECLARE
                                 max_id INT;
@@ -530,7 +547,7 @@ elif opcion == "📊 Base de Datos":
                                     EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
                                 END IF;
                             END $$;
-                        """))
+                        '''))
                     
                     st.cache_data.clear()
                     st.success(f"❌ Registro #{id_del} eliminado y correlativo ajustado.")
@@ -539,7 +556,7 @@ elif opcion == "📊 Base de Datos":
             with col_del2:
                 if st.button("🔄 Renumerar Folios Consecutivos"):
                     with engine.begin() as conn:
-                        conn.execute(text("""
+                        conn.execute(text('''
                             WITH renumerado AS (
                                 SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS nuevo_id
                                 FROM solicitudes
@@ -548,8 +565,8 @@ elif opcion == "📊 Base de Datos":
                             SET id = renumerado.nuevo_id
                             FROM renumerado
                             WHERE solicitudes.id = renumerado.id;
-                        """))
-                        conn.execute(text("""
+                        '''))
+                        conn.execute(text('''
                             DO $$
                             DECLARE
                                 max_id INT;
@@ -563,7 +580,7 @@ elif opcion == "📊 Base de Datos":
                                     EXECUTE format('SELECT setval(%L, %s)', seq_name, max_id);
                                 END IF;
                             END $$;
-                        """))
+                        '''))
                     st.cache_data.clear()
                     st.success("✅ Todos los folios han sido renumerados en orden consecutivo.")
                     st.rerun()
